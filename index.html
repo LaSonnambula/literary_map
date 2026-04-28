@@ -653,22 +653,43 @@ function wikimediaThumb(rawUrl, width) {
   } catch { return rawUrl; }
 }
 
+// 给完全相同坐标的书加小随机抖动，让密集点散开可点击
+// 抖动范围约 ±0.4° （城市级别内），同一坐标的书顺序稳定
+function jitterCoord(coord, index) {
+  const [lng, lat] = coord;
+  // 用 index 生成固定伪随机偏移，避免每次刷新跳动
+  const angle = (index * 2.399963) % (Math.PI * 2); // 黄金角分布
+  const r = Math.sqrt((index % 80) / 80) * 0.35;
+  return [
+    Math.round((lng + Math.cos(angle) * r) * 100000) / 100000,
+    Math.round((lat + Math.sin(angle) * r) * 100000) / 100000,
+  ];
+}
+
 function buildGeoJSON(books) {
+  // 统计每个坐标出现次数，为同坐标书编序号
+  const coordCount = {};
   return {
     type: 'FeatureCollection',
-    features: books.map(b => ({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: b.coord },
-      properties: {
-        id:       b.id,
-        title:    b.title,
-        author:   b.author,
-        location: b.location,
-        cover:    b.cover,
-        wikiUrl:  b.url,
-        source:   b.source
-      }
-    }))
+    features: books.map(b => {
+      const key = b.coord[0] + ',' + b.coord[1];
+      coordCount[key] = (coordCount[key] || 0) + 1;
+      const idx = coordCount[key] - 1;
+      const coord = idx === 0 ? b.coord : jitterCoord(b.coord, idx);
+      return {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: coord },
+        properties: {
+          id:       b.id,
+          title:    b.title,
+          author:   b.author,
+          location: b.location,
+          cover:    b.cover,
+          wikiUrl:  b.url,
+          source:   b.source
+        }
+      };
+    })
   };
 }
 
@@ -680,8 +701,8 @@ function addLayers(geojson) {
     type: 'geojson',
     data: geojson,
     cluster: true,
-    clusterMaxZoom: 14,
-    clusterRadius: 55
+    clusterMaxZoom: 9,   // zoom 9+ 就显示单点，不再需要放到最大
+    clusterRadius: 40
   });
 
   // 聚合光晕
@@ -944,7 +965,7 @@ map.on('click', 'clusters', async (e) => {
       showClusterList(leaves, count);
     });
   } else {
-    map.easeTo({ center: coords, zoom: map.getZoom() + 3 });
+    map.easeTo({ center: coords, zoom: map.getZoom() + 2 });
   }
 });
 
