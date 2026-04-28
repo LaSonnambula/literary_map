@@ -66,12 +66,13 @@ SELECT DISTINCT ?book ?bookLabel ?authorLabel ?locationLabel ?coord ?coverUrl WH
   ?location wdt:P625 ?coord .
   OPTIONAL {{ ?book wdt:P50 ?author }}
   OPTIONAL {{ ?book wdt:P18 ?coverUrl }}
-  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "zh,en" . }}
+  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "zh-hans,zh,en" . }}
 }}
 LIMIT 5000
 OFFSET {offset}
 """
 # 不限制 P31 类型，涵盖小说/诗集/剧本/散文/人文社科等一切有叙事地点的作品
+# 语言优先级：简体中文 > 中文 > 英文
 
 
 def fetch_wikidata():
@@ -101,9 +102,8 @@ def fetch_wikidata():
                 continue
 
             title = row.get("bookLabel", {}).get("value", "")
-            # 过滤掉纯 Q 号（无 label）
-            if re.match(r"^Q\d+$", title):
-                title = ""
+            # Q号表示 Wikidata 无此语言标签，保留 Q号（前端可异步补全）
+            # 不再置空，保持原样
 
             cover = row.get("coverUrl", {}).get("value", "")
             # 转成 thumb URL
@@ -111,10 +111,15 @@ def fetch_wikidata():
                 fname = cover.split("/")[-1].split("?")[0]
                 cover = f"https://commons.wikimedia.org/w/thumb.php?f={fname}&w=300"
 
+            author = row.get("authorLabel", {}).get("value", "")
+            # 作者若是 Q 号也置空（无意义）
+            if re.match(r"^Q\d+$", author):
+                author = ""
+
             books.append({
                 "id": book_id,
-                "title": title or row.get("bookLabel", {}).get("value", ""),
-                "author": row.get("authorLabel", {}).get("value", ""),
+                "title": title,
+                "author": author,
                 "location": row.get("locationLabel", {}).get("value", ""),
                 "coord": coord,
                 "cover": cover or None,

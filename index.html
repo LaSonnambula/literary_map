@@ -858,14 +858,59 @@ function openBookPanel(props) {
   fetchBookSummary(props, title, author);
 }
 
-// Wikidata 标签补全（针对 Q 号标题）
+// Wikidata 标签补全（针对 Q 号标题）——单条
 async function fetchWikidataLabel(qid) {
+  if (wikidataLabelCache[qid]) return wikidataLabelCache[qid];
   try {
     const r = await fetch(`https://www.wikidata.org/wiki/Special:EntityData/${qid}.json`);
     const d = await r.json();
     const e = d.entities[qid];
-    return e?.labels?.zh?.value || e?.labels?.en?.value || '';
+    const label = e?.labels?.['zh-hans']?.value || e?.labels?.zh?.value || e?.labels?.en?.value || '';
+    wikidataLabelCache[qid] = label;
+    return label;
   } catch { return ''; }
+}
+
+// 批量查询 Wikidata 标签（wbgetentities，每次最多 50 个）
+const wikidataLabelCache = {};
+
+async function batchFetchWikidataLabels(qids) {
+  const toFetch = qids.filter(q => !wikidataLabelCache[q]);
+  if (!toFetch.length) return;
+  // 每批 50 个
+  for (let i = 0; i < toFetch.length; i += 50) {
+    const batch = toFetch.slice(i, i + 50);
+    try {
+      const url = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${batch.join('|')}&props=labels&languages=zh-hans|zh|en&format=json&origin=*`;
+      const r = await fetch(url);
+      const d = await r.json();
+      for (const qid of batch) {
+        const e = d.entities?.[qid];
+        wikidataLabelCache[qid] = e?.labels?.['zh-hans']?.value || e?.labels?.zh?.value || e?.labels?.en?.value || '';
+      }
+    } catch {}
+    await new Promise(res => setTimeout(res, 200)); // 限速
+  }
+}
+
+// 用补全的标签替换 allBooks 里的 Q 号标题，然后刷新地图
+async function resolveQidTitles() {
+  const qidBooks = allBooks.filter(b => /^Q\d+$/.test(b.title));
+  if (!qidBooks.length) return;
+  const qids = [...new Set(qidBooks.map(b => b.title))];
+  console.log(`补全 ${qids.length} 个 Q号标题…`);
+  await batchFetchWikidataLabels(qids);
+  let changed = 0;
+  for (const b of allBooks) {
+    if (/^Q\d+$/.test(b.title) && wikidataLabelCache[b.title]) {
+      b.title = wikidataLabelCache[b.title];
+      changed++;
+    }
+  }
+  if (changed > 0) {
+    console.log(`已补全 ${changed} 本书的标题，刷新地图…`);
+    updateMapData(allBooks);
+  }
 }
 
 // Google Books 封面备选
@@ -1144,6 +1189,9 @@ map.on('load', async () => {
   const olC = allBooks.filter(b => b.source === 'openlibrary').length;
   document.getElementById('stats').textContent =
     `${allBooks.length.toLocaleString()} 部作品 · Wikidata ${wdC.toLocaleString()} · Open Library ${olC.toLocaleString()}`;
+
+  // 后台静默补全 Q 号标题（不阻塞地图显示）
+  resolveQidTitles();
 });
 </script>
 </body>
