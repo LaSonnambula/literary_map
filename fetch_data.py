@@ -57,11 +57,19 @@ def wikidata_sparql(query, retries=3):
 # 第一步：Wikidata
 # ─────────────────────────────────────────────
 
+# 覆盖多种文学体裁：
+#   Q7725634 = literary work（文学作品，最宽泛）
+#   P840     = narrative location（故事发生地）
 SPARQL_TEMPLATE = """
-SELECT ?book ?bookLabel ?authorLabel ?locationLabel ?coord ?coverUrl WHERE {{
-  ?book wdt:P31 wd:Q7725634 .
+SELECT DISTINCT ?book ?bookLabel ?authorLabel ?locationLabel ?coord ?coverUrl WHERE {{
   ?book wdt:P840 ?location .
   ?location wdt:P625 ?coord .
+  ?book wdt:P31 ?type .
+  VALUES ?type {{
+    wd:Q7725634  wd:Q8261     wd:Q49084    wd:Q1372064
+    wd:Q25379    wd:Q11635    wd:Q5185279  wd:Q26256008
+    wd:Q386724   wd:Q1261026
+  }}
   OPTIONAL {{ ?book wdt:P50 ?author }}
   OPTIONAL {{ ?book wdt:P18 ?coverUrl }}
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "zh,en" . }}
@@ -69,6 +77,9 @@ SELECT ?book ?bookLabel ?authorLabel ?locationLabel ?coord ?coverUrl WHERE {{
 LIMIT 5000
 OFFSET {offset}
 """
+# VALUES 覆盖：literary work / novel / short story / novella /
+# poem / play / short story collection / picture book /
+# work of literature / graphic novel
 
 
 def fetch_wikidata():
@@ -158,16 +169,49 @@ PLACE_COORDS = {
     "tibet": [88.00000, 31.00000], "lhasa": [91.14090, 29.65000],
     "china": [104.19540, 35.86170],
     "singapore": [103.81980, 1.35210],
-    "tokyo": [139.69170, 35.68950],
+    "tokyo": [139.69170, 35.68950], "edo": [139.69170, 35.68950],
     "kyoto": [135.76800, 35.01160],
     "osaka": [135.50220, 34.69370],
+    "hiroshima": [132.45940, 34.39330],
     "seoul": [126.97800, 37.56630],
+    "busan": [129.07560, 35.17950],
     "pyongyang": [125.75430, 39.03920],
     "hanoi": [105.85416, 21.02780],
     "saigon": [106.66000, 10.75000], "ho chi minh": [106.66000, 10.75000],
     "bangkok": [100.49350, 13.75400],
+    "rangoon": [96.19510, 16.86610], "yangon": [96.19510, 16.86610],
+    "manila": [120.98220, 14.59950],
+    "jakarta": [106.84130, -6.21460], "batavia": [106.84130, -6.21460],
+    "kuala lumpur": [101.68690, 3.14120],
     "calcutta": [88.36300, 22.57270], "kolkata": [88.36300, 22.57270],
     "bombay": [72.87360, 19.07600], "mumbai": [72.87360, 19.07600],
+    "delhi": [77.20900, 28.61400], "new delhi": [77.20900, 28.61400],
+    "madras": [80.27070, 13.08270], "chennai": [80.27070, 13.08270],
+    "lahore": [74.35870, 31.52040],
+    "karachi": [67.01000, 24.86080],
+    "cairo": [31.23570, 30.04420],
+    "alexandria": [29.91870, 31.20890],
+    "istanbul": [28.97840, 41.01380], "constantinople": [28.97840, 41.01380],
+    "baghdad": [44.36610, 33.34580],
+    "tehran": [51.42310, 35.69440],
+    "jerusalem": [35.21640, 31.76890],
+    "nairobi": [36.82190, -1.29210],
+    "lagos": [3.37950, 6.45510],
+    "johannesburg": [28.04630, -26.20270],
+    "buenos aires": [-58.38160, -34.60370],
+    "rio de janeiro": [-43.17290, -22.90680], "rio": [-43.17290, -22.90680],
+    "mexico city": [-99.13320, 19.42470],
+    "havana": [-82.38240, 23.13020],
+    "bogota": [-74.08750, 4.71100],
+    "lima": [-77.02820, -12.04320],
+    "santiago": [-70.64830, -33.45690],
+    "moscow": [37.61560, 55.75220],
+    "saint petersburg": [30.31580, 59.93900], "leningrad": [30.31580, 59.93900],
+    "odessa": [30.72330, 46.47470],
+    "warsaw": [21.01220, 52.22977],
+    "prague": [14.42060, 50.08804],
+    "budapest": [19.04020, 47.49801],
+    "bucharest": [26.09660, 44.43225],
 }
 
 ASIA_KEYWORDS = {
@@ -180,10 +224,30 @@ ASIA_KEYWORDS = {
 }
 
 OL_QUERIES = [
+    # 中国
     "Beijing", "Shanghai", "Hong Kong", "Guangzhou", "Chengdu",
     "Nanjing", "Hangzhou", "Wuhan", "Xian", "Taiwan", "Tibet",
     "Manchuria", "Chongqing", "Suzhou", "Harbin", "Peking",
-    "Tokyo", "Kyoto", "Seoul", "Singapore",
+    "Tianjin", "Kunming", "Fuzhou", "Xiamen", "Qingdao",
+    # 日本
+    "Tokyo", "Kyoto", "Osaka", "Hiroshima", "Edo",
+    # 韩国
+    "Seoul", "Busan", "Pyongyang",
+    # 东南亚
+    "Singapore", "Bangkok", "Hanoi", "Saigon", "Rangoon",
+    "Manila", "Jakarta", "Kuala Lumpur",
+    # 南亚
+    "Calcutta", "Bombay", "Delhi", "Madras", "Lahore", "Karachi",
+    # 中东
+    "Cairo", "Istanbul", "Baghdad", "Tehran", "Jerusalem",
+    # 非洲
+    "Nairobi", "Lagos", "Johannesburg", "Alexandria",
+    # 拉丁美洲
+    "Buenos Aires", "Rio de Janeiro", "Mexico City", "Havana",
+    "Bogota", "Lima", "Santiago",
+    # 俄罗斯/东欧
+    "Moscow", "Saint Petersburg", "Leningrad", "Odessa",
+    "Warsaw", "Prague", "Budapest", "Bucharest",
 ]
 
 nominatim_cache = {}

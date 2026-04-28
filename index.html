@@ -104,9 +104,10 @@
     #panel {
       position: absolute;
       right: 0; top: 0; bottom: 0;
-      width: 340px;
-      background: rgba(20,18,32,0.97);
-      border-left: 1px solid rgba(240,194,127,0.15);
+      width: 420px;
+      max-width: 90vw;
+      background: rgba(14,12,26,0.98);
+      border-left: 1px solid rgba(240,194,127,0.12);
       transform: translateX(100%);
       transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
       z-index: 15;
@@ -119,89 +120,157 @@
 
     #panel-close {
       position: absolute;
-      top: 12px; right: 12px;
+      top: 14px; right: 14px;
       background: none;
       border: none;
       color: #9b8a72;
-      font-size: 20px;
+      font-size: 18px;
       cursor: pointer;
       width: 32px; height: 32px;
       display: flex; align-items: center; justify-content: center;
       border-radius: 50%;
       transition: background 0.2s, color 0.2s;
+      z-index: 1;
     }
 
     #panel-close:hover { background: rgba(240,194,127,0.1); color: #f0c27f; }
 
-    #panel-content { overflow-y: auto; flex: 1; padding: 24px; }
+    /* 封面横幅区 */
+    #panel-hero {
+      position: relative;
+      width: 100%;
+      height: 260px;
+      flex-shrink: 0;
+      overflow: hidden;
+      background: #0d0b1e;
+    }
+
+    #panel-hero-blur {
+      position: absolute; inset: 0;
+      background-size: cover;
+      background-position: center;
+      filter: blur(18px) brightness(0.35) saturate(1.4);
+      transform: scale(1.1);
+    }
+
+    #panel-hero-cover {
+      position: absolute;
+      left: 28px; bottom: -28px;
+      width: 110px; height: 160px;
+      object-fit: cover;
+      border-radius: 6px;
+      box-shadow: 4px 8px 24px rgba(0,0,0,0.8);
+      border: 1px solid rgba(240,194,127,0.2);
+    }
+
+    #panel-hero-placeholder {
+      position: absolute;
+      left: 28px; bottom: -28px;
+      width: 110px; height: 160px;
+      background: linear-gradient(135deg, #2d2540, #1a1a2e);
+      border: 1px solid rgba(240,194,127,0.2);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 38px;
+    }
+
+    /* 内容区 */
+    #panel-content {
+      overflow-y: auto;
+      flex: 1;
+      padding: 44px 28px 28px;
+    }
 
     #panel-content::-webkit-scrollbar { width: 4px; }
     #panel-content::-webkit-scrollbar-track { background: transparent; }
     #panel-content::-webkit-scrollbar-thumb { background: rgba(240,194,127,0.2); border-radius: 2px; }
 
-    .book-cover {
-      width: 120px; height: 180px;
-      object-fit: cover;
-      border-radius: 4px;
-      box-shadow: 4px 4px 20px rgba(0,0,0,0.6);
-      margin-bottom: 16px;
-    }
-
-    .book-cover-placeholder {
-      width: 120px; height: 180px;
-      background: linear-gradient(135deg, #2d2540, #1a1a2e);
-      border: 1px solid rgba(240,194,127,0.2);
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 40px;
-      margin-bottom: 16px;
-    }
-
     #panel-title {
-      font-size: 18px;
-      color: #f0c27f;
-      line-height: 1.4;
-      margin-bottom: 8px;
+      font-size: 20px;
+      color: #f0e6cc;
+      line-height: 1.35;
+      margin-bottom: 6px;
+      font-weight: normal;
     }
 
     #panel-author {
       font-size: 13px;
-      color: #9b8a72;
-      margin-bottom: 12px;
+      color: #c4a96b;
+      margin-bottom: 14px;
     }
 
-    #panel-location-tag {
-      display: inline-block;
-      background: rgba(240,194,127,0.1);
-      border: 1px solid rgba(240,194,127,0.25);
-      border-radius: 12px;
+    #panel-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 20px;
+    }
+
+    .meta-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(240,194,127,0.07);
+      border: 1px solid rgba(240,194,127,0.18);
+      border-radius: 20px;
       padding: 3px 10px;
       font-size: 11px;
-      color: #c4a96b;
-      margin-bottom: 16px;
+      color: #9b8a72;
     }
 
     #panel-desc {
-      font-size: 13px;
-      color: #9b8a72;
-      line-height: 1.7;
-      border-top: 1px solid rgba(240,194,127,0.1);
+      font-size: 13.5px;
+      color: #b09880;
+      line-height: 1.85;
+      margin-bottom: 20px;
+    }
+
+    #panel-desc-loading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #4a3f30;
+      margin-bottom: 12px;
+    }
+
+    #panel-desc-loading .dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: #c4a96b;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    #panel-desc-loading .dot:nth-child(2) { animation-delay: 0.2s; }
+    #panel-desc-loading .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes pulse { 0%,80%,100%{opacity:0.2} 40%{opacity:1} }
+
+    #panel-links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      border-top: 1px solid rgba(240,194,127,0.08);
       padding-top: 16px;
     }
 
-    #panel-link {
+    .panel-link-btn {
       display: inline-block;
-      margin-top: 16px;
-      color: #f0c27f;
+      padding: 6px 14px;
+      border: 1px solid rgba(240,194,127,0.25);
+      border-radius: 20px;
+      color: #c4a96b;
       font-size: 12px;
       text-decoration: none;
-      opacity: 0.7;
-      transition: opacity 0.2s;
+      font-family: inherit;
+      background: none;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s, color 0.2s;
     }
 
-    #panel-link:hover { opacity: 1; }
+    .panel-link-btn:hover {
+      background: rgba(240,194,127,0.1);
+      border-color: rgba(240,194,127,0.5);
+      color: #f0c27f;
+    }
 
     /* 聚合点气泡列表 */
     #cluster-panel {
@@ -379,13 +448,24 @@
 
 <div id="panel">
   <button id="panel-close">✕</button>
+
+  <!-- 封面横幅 -->
+  <div id="panel-hero">
+    <div id="panel-hero-blur"></div>
+    <div id="panel-hero-cover-wrap"></div>
+  </div>
+
+  <!-- 文字信息 -->
   <div id="panel-content">
-    <div id="panel-cover-wrap"></div>
     <div id="panel-title"></div>
     <div id="panel-author"></div>
-    <div id="panel-location-tag"></div>
+    <div id="panel-meta"></div>
+    <div id="panel-desc-loading" style="display:none">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span>加载简介…</span>
+    </div>
     <div id="panel-desc"></div>
-    <a id="panel-link" target="_blank" href="#">在 Wikidata 查看 →</a>
+    <div id="panel-links"></div>
   </div>
 </div>
 
@@ -565,68 +645,182 @@ function wikimediaThumb(rawUrl, width) {
   }
 }
 
+function clean(v) {
+  return (!v || v === 'null') ? null : v;
+}
+
 function openBookPanel(props) {
   clusterPanel.style.display = 'none';
 
-  // MapLibre 会把 null 序列化成字符串 "null"，统一清洗
-  const title    = (!props.title   || props.title   === 'null') ? '未知书名' : props.title;
-  const author   = (!props.author  || props.author  === 'null') ? ''         : props.author;
-  const location = (!props.location|| props.location=== 'null') ? ''         : props.location;
-  const cover    = (!props.cover   || props.cover   === 'null') ? null       : props.cover;
-  const wikiUrl  = (!props.wikiUrl || props.wikiUrl === 'null') ? (props.id || '') : props.wikiUrl;
-
-  // 书名如果是 Q 号，显示"未知书名"并提供链接查看原始数据
+  const title    = clean(props.title)    || '未知书名';
+  const author   = clean(props.author)   || '';
+  const location = clean(props.location) || '';
+  const cover    = clean(props.cover);
+  const url      = clean(props.wikiUrl)  || clean(props.id) || '';
+  const source   = clean(props.source)   || 'wikidata';
   const displayTitle = /^Q\d+$/.test(title) ? '（书名暂无翻译）' : title;
 
+  // 标题 / 作者
   document.getElementById('panel-title').textContent = displayTitle;
-  document.getElementById('panel-author').textContent = author ? `作者：${author}` : '';
-  document.getElementById('panel-location-tag').textContent = location ? `📍 ${location}` : '';
+  document.getElementById('panel-author').textContent = author ? author : '';
 
-  const coverWrap = document.getElementById('panel-cover-wrap');
+  // meta 标签行
+  const meta = document.getElementById('panel-meta');
+  meta.innerHTML = '';
+  if (location) {
+    const t = document.createElement('span');
+    t.className = 'meta-tag';
+    t.textContent = `📍 ${location}`;
+    meta.appendChild(t);
+  }
+  const srcTag = document.createElement('span');
+  srcTag.className = 'meta-tag';
+  srcTag.textContent = source === 'openlibrary' ? '📚 Open Library' : '🌐 Wikidata';
+  meta.appendChild(srcTag);
+
+  // 封面横幅
+  const hero     = document.getElementById('panel-hero');
+  const heroBlur = document.getElementById('panel-hero-blur');
+  const coverWrap = document.getElementById('panel-hero-cover-wrap');
   coverWrap.innerHTML = '';
 
-  if (cover) {
-    // Open Library 封面是直接 jpg；Wikimedia 需要走 thumb API
-    const isOL = cover.includes('covers.openlibrary.org');
-    const thumbUrl = isOL ? cover : wikimediaThumb(cover, 200);
-    const img = document.createElement('img');
-    img.className = 'book-cover';
-    img.alt = displayTitle;
-    coverWrap.appendChild(img);
-    img.onerror = () => {
-      img.remove();
-      coverWrap.innerHTML = '<div class="book-cover-placeholder">📖</div>';
-    };
-    img.src = thumbUrl;
-  } else {
-    coverWrap.innerHTML = '<div class="book-cover-placeholder">📖</div>';
+  function setHeroCover(src) {
+    heroBlur.style.backgroundImage = src ? `url(${src})` : 'none';
+    if (src) {
+      const img = document.createElement('img');
+      img.id = 'panel-hero-cover';
+      img.alt = displayTitle;
+      coverWrap.appendChild(img);
+      img.onerror = () => {
+        img.remove();
+        heroBlur.style.backgroundImage = 'none';
+        coverWrap.innerHTML = '<div id="panel-hero-placeholder">📖</div>';
+        tryGoogleBooksCover(displayTitle, author);
+      };
+      img.src = src;
+    } else {
+      coverWrap.innerHTML = '<div id="panel-hero-placeholder">📖</div>';
+      tryGoogleBooksCover(displayTitle, author);
+    }
   }
 
+  if (cover) {
+    const isOL = cover.includes('covers.openlibrary.org');
+    setHeroCover(isOL ? cover : wikimediaThumb(cover, 300));
+  } else {
+    setHeroCover(null);
+  }
+
+  // 简介区 reset
   document.getElementById('panel-desc').textContent = '';
-  const link = document.getElementById('panel-link');
-  link.href = wikiUrl;
-  link.style.display = wikiUrl ? 'inline-block' : 'none';
-  link.textContent = wikiUrl?.includes('openlibrary') ? '在 Open Library 查看 →' : '在 Wikidata 查看 →';
+  document.getElementById('panel-desc-loading').style.display = 'flex';
+
+  // 链接区
+  const links = document.getElementById('panel-links');
+  links.innerHTML = '';
+  if (url) {
+    const a = document.createElement('a');
+    a.className = 'panel-link-btn';
+    a.href = url;
+    a.target = '_blank';
+    a.textContent = source === 'openlibrary' ? '📖 Open Library' : '🔗 Wikidata';
+    links.appendChild(a);
+  }
 
   panel.classList.add('open');
-  // Open Library 的书不走 Wikidata 摘要
-  const isOLBook = (props.source === 'openlibrary') || (props.id || '').includes('openlibrary');
-  if (!isOLBook) fetchWikiSummary(props.id);
+  fetchBookSummary(props, displayTitle, author);
 }
 
-async function fetchWikiSummary(wikidataUrl) {
+// Google Books 封面备选（无需 key，按书名查询）
+async function tryGoogleBooksCover(title, author) {
+  if (!title || /^（/.test(title)) return;
+  try {
+    const q = encodeURIComponent(`intitle:${title}${author ? '+inauthor:'+author : ''}`);
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=1&fields=items(volumeInfo(imageLinks))`);
+    const data = await res.json();
+    const thumb = data?.items?.[0]?.volumeInfo?.imageLinks?.thumbnail;
+    if (!thumb) return;
+    const src = thumb.replace('http:', 'https:').replace('&zoom=1', '&zoom=2');
+    const heroBlur = document.getElementById('panel-hero-blur');
+    const coverWrap = document.getElementById('panel-hero-cover-wrap');
+    if (coverWrap.querySelector('#panel-hero-placeholder')) {
+      const img = document.createElement('img');
+      img.id = 'panel-hero-cover';
+      coverWrap.innerHTML = '';
+      coverWrap.appendChild(img);
+      img.onerror = () => img.remove();
+      img.src = src;
+      heroBlur.style.backgroundImage = `url(${src})`;
+    }
+  } catch {}
+}
+
+// 三级简介降级：Wikipedia zh → Wikipedia en → Open Library → Wikidata description
+async function fetchBookSummary(props, title, author) {
+  const descEl    = document.getElementById('panel-desc');
+  const loadingEl = document.getElementById('panel-desc-loading');
+
+  const isOL = (clean(props.source) === 'openlibrary') || (clean(props.id) || '').includes('openlibrary');
+
+  let summary = '';
+
+  // 1. Wikipedia 中文
+  if (!isOL && title && !/^（/.test(title)) {
+    summary = await fetchWikipediaSummary(title, 'zh');
+  }
+
+  // 2. Wikipedia 英文
+  if (!summary && title && !/^（/.test(title)) {
+    summary = await fetchWikipediaSummary(title, 'en');
+  }
+
+  // 3. Open Library description
+  if (!summary && isOL) {
+    const olKey = (clean(props.id) || '').replace('https://openlibrary.org', '');
+    if (olKey) summary = await fetchOLDescription(olKey);
+  }
+
+  // 4. Wikidata description（短）
+  if (!summary && !isOL) {
+    summary = await fetchWikidataDesc(clean(props.id) || '');
+  }
+
+  loadingEl.style.display = 'none';
+  descEl.textContent = summary || '';
+}
+
+async function fetchWikipediaSummary(title, lang) {
+  try {
+    const res = await fetch(
+      `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`,
+      { headers: { 'Accept': 'application/json' } }
+    );
+    if (!res.ok) return '';
+    const data = await res.json();
+    return data.extract || '';
+  } catch { return ''; }
+}
+
+async function fetchOLDescription(workKey) {
+  try {
+    const res = await fetch(`https://openlibrary.org${workKey}.json`);
+    if (!res.ok) return '';
+    const data = await res.json();
+    const desc = data.description;
+    if (!desc) return '';
+    return typeof desc === 'string' ? desc : (desc.value || '');
+  } catch { return ''; }
+}
+
+async function fetchWikidataDesc(wikidataUrl) {
   try {
     const qid = wikidataUrl.split('/').pop();
-    const res = await fetch(
-      `https://www.wikidata.org/wiki/Special:EntityData/${qid}.json`
-    );
+    if (!/^Q\d+$/.test(qid)) return '';
+    const res = await fetch(`https://www.wikidata.org/wiki/Special:EntityData/${qid}.json`);
     const data = await res.json();
     const entity = data.entities[qid];
-    const desc = entity?.descriptions?.zh?.value
-      || entity?.descriptions?.en?.value
-      || '';
-    document.getElementById('panel-desc').textContent = desc;
-  } catch {}
+    return entity?.descriptions?.zh?.value || entity?.descriptions?.en?.value || '';
+  } catch { return ''; }
 }
 
 map.on('click', 'clusters', async (e) => {
