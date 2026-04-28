@@ -64,12 +64,6 @@ SPARQL_TEMPLATE = """
 SELECT DISTINCT ?book ?bookLabel ?authorLabel ?locationLabel ?coord ?coverUrl WHERE {{
   ?book wdt:P840 ?location .
   ?location wdt:P625 ?coord .
-  ?book wdt:P31 ?type .
-  VALUES ?type {{
-    wd:Q7725634  wd:Q8261     wd:Q49084    wd:Q1372064
-    wd:Q25379    wd:Q11635    wd:Q5185279  wd:Q26256008
-    wd:Q386724   wd:Q1261026
-  }}
   OPTIONAL {{ ?book wdt:P50 ?author }}
   OPTIONAL {{ ?book wdt:P18 ?coverUrl }}
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "zh,en" . }}
@@ -77,9 +71,7 @@ SELECT DISTINCT ?book ?bookLabel ?authorLabel ?locationLabel ?coord ?coverUrl WH
 LIMIT 5000
 OFFSET {offset}
 """
-# VALUES 覆盖：literary work / novel / short story / novella /
-# poem / play / short story collection / picture book /
-# work of literature / graphic novel
+# 不限制 P31 类型，涵盖小说/诗集/剧本/散文/人文社科等一切有叙事地点的作品
 
 
 def fetch_wikidata():
