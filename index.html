@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>文学地图 Literary Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.1.3/dist/maplibre-gl.css" />
+  <script src="https://unpkg.com/maplibre-gl@4.1.3/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/supercluster@8.0.1/dist/supercluster.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Georgia', 'Noto Serif SC', serif;
+      background: #1a1a2e;
+      color: #e8d5b7;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #map { width: 100%; height: 100vh; }
+
+    /* 顶部标题栏 */
+    #header {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      z-index: 10;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      background: linear-gradient(to bottom, rgba(26,26,46,0.95), transparent);
+      pointer-events: none;
+    }
+
+    #header h1 {
+      font-size: 22px;
+      letter-spacing: 0.05em;
+      color: #f0c27f;
+      text-shadow: 0 0 20px rgba(240,194,127,0.4);
+      pointer-events: auto;
+    }
+
+    #header p {
+      font-size: 12px;
+      color: #9b8a72;
+      pointer-events: auto;
+    }
+
+    #search-box {
+      pointer-events: auto;
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+    }
+
+    #search-input {
+      background: rgba(240,194,127,0.1);
+      border: 1px solid rgba(240,194,127,0.3);
+      border-radius: 20px;
+      padding: 8px 16px;
+      color: #e8d5b7;
+      font-size: 13px;
+      font-family: inherit;
+      width: 200px;
+      outline: none;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    #search-input:focus {
+      border-color: rgba(240,194,127,0.7);
+      background: rgba(240,194,127,0.15);
+    }
+
+    #search-input::placeholder { color: #6b5e4e; }
+
+    /* 加载状态 */
+    #loading {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 20;
+      text-align: center;
+      background: rgba(26,26,46,0.92);
+      border: 1px solid rgba(240,194,127,0.2);
+      border-radius: 12px;
+      padding: 32px 48px;
+    }
+
+    #loading .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid rgba(240,194,127,0.2);
+      border-top-color: #f0c27f;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #loading p { color: #9b8a72; font-size: 13px; }
+
+    /* 侧边书籍详情面板 */
+    #panel {
+      position: absolute;
+      right: 0; top: 0; bottom: 0;
+      width: 340px;
+      background: rgba(20,18,32,0.97);
+      border-left: 1px solid rgba(240,194,127,0.15);
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+      z-index: 15;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #panel.open { transform: translateX(0); }
+
+    #panel-close {
+      position: absolute;
+      top: 12px; right: 12px;
+      background: none;
+      border: none;
+      color: #9b8a72;
+      font-size: 20px;
+      cursor: pointer;
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 50%;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    #panel-close:hover { background: rgba(240,194,127,0.1); color: #f0c27f; }
+
+    #panel-content { overflow-y: auto; flex: 1; padding: 24px; }
+
+    #panel-content::-webkit-scrollbar { width: 4px; }
+    #panel-content::-webkit-scrollbar-track { background: transparent; }
+    #panel-content::-webkit-scrollbar-thumb { background: rgba(240,194,127,0.2); border-radius: 2px; }
+
+    .book-cover {
+      width: 120px; height: 180px;
+      object-fit: cover;
+      border-radius: 4px;
+      box-shadow: 4px 4px 20px rgba(0,0,0,0.6);
+      margin-bottom: 16px;
+    }
+
+    .book-cover-placeholder {
+      width: 120px; height: 180px;
+      background: linear-gradient(135deg, #2d2540, #1a1a2e);
+      border: 1px solid rgba(240,194,127,0.2);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      margin-bottom: 16px;
+    }
+
+    #panel-title {
+      font-size: 18px;
+      color: #f0c27f;
+      line-height: 1.4;
+      margin-bottom: 8px;
+    }
+
+    #panel-author {
+      font-size: 13px;
+      color: #9b8a72;
+      margin-bottom: 12px;
+    }
+
+    #panel-location-tag {
+      display: inline-block;
+      background: rgba(240,194,127,0.1);
+      border: 1px solid rgba(240,194,127,0.25);
+      border-radius: 12px;
+      padding: 3px 10px;
+      font-size: 11px;
+      color: #c4a96b;
+      margin-bottom: 16px;
+    }
+
+    #panel-desc {
+      font-size: 13px;
+      color: #9b8a72;
+      line-height: 1.7;
+      border-top: 1px solid rgba(240,194,127,0.1);
+      padding-top: 16px;
+    }
+
+    #panel-link {
+      display: inline-block;
+      margin-top: 16px;
+      color: #f0c27f;
+      font-size: 12px;
+      text-decoration: none;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+
+    #panel-link:hover { opacity: 1; }
+
+    /* 聚合点气泡列表 */
+    #cluster-panel {
+      position: absolute;
+      left: 50%; bottom: 24px;
+      transform: translateX(-50%);
+      background: rgba(20,18,32,0.97);
+      border: 1px solid rgba(240,194,127,0.2);
+      border-radius: 12px;
+      padding: 16px;
+      z-index: 15;
+      max-width: 560px;
+      width: calc(100vw - 48px);
+      max-height: 280px;
+      display: none;
+    }
+
+    #cluster-panel h3 {
+      font-size: 13px;
+      color: #9b8a72;
+      margin-bottom: 12px;
+    }
+
+    #cluster-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow-y: auto;
+      max-height: 220px;
+    }
+
+    #cluster-list::-webkit-scrollbar { width: 4px; }
+    #cluster-list::-webkit-scrollbar-thumb { background: rgba(240,194,127,0.2); border-radius: 2px; }
+
+    .cluster-book-btn {
+      background: rgba(240,194,127,0.08);
+      border: 1px solid rgba(240,194,127,0.2);
+      border-radius: 8px;
+      padding: 6px 10px;
+      color: #e8d5b7;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.2s, border-color 0.2s;
+      text-align: left;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .cluster-book-btn img {
+      width: 28px;
+      height: 40px;
+      object-fit: cover;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .cluster-book-btn span {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .cluster-book-btn small {
+      display: block;
+      font-size: 10px;
+      color: #6b5e4e;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .cluster-book-btn:hover {
+      background: rgba(240,194,127,0.18);
+      border-color: rgba(240,194,127,0.5);
+    }
+
+    /* 统计角标 */
+    #stats {
+      position: absolute;
+      bottom: 24px; left: 24px;
+      font-size: 11px;
+      color: #4a3f30;
+      z-index: 10;
+    }
+
+    /* 悬停封面卡片 */
+    #hover-card {
+      position: fixed;
+      pointer-events: none;
+      z-index: 50;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      background: rgba(14,12,26,0.96);
+      border: 1px solid rgba(240,194,127,0.25);
+      border-radius: 10px;
+      padding: 10px 10px 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+      width: 140px;
+      transition: opacity 0.12s;
+    }
+
+    #hover-card img {
+      width: 120px;
+      height: 170px;
+      object-fit: cover;
+      border-radius: 4px;
+      box-shadow: 2px 4px 12px rgba(0,0,0,0.6);
+      display: block;
+    }
+
+    #hover-card .hc-placeholder {
+      width: 120px;
+      height: 170px;
+      background: linear-gradient(135deg, #2d2540, #1a1a2e);
+      border: 1px solid rgba(240,194,127,0.15);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+    }
+
+    #hover-card .hc-title {
+      font-size: 11px;
+      color: #e8d5b7;
+      text-align: center;
+      line-height: 1.4;
+      max-width: 120px;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    #hover-card .hc-author {
+      font-size: 10px;
+      color: #6b5e4e;
+      text-align: center;
+      max-width: 120px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* 自定义地图样式覆盖 */
+    .maplibregl-canvas { cursor: crosshair; }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="header">
+  <div>
+    <h1>📖 文学地图</h1>
+    <p>Literary Map of the World</p>
+  </div>
+  <div id="search-box">
+    <input id="search-input" type="text" placeholder="搜索书名或作者…" />
+  </div>
+</div>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <p>正在从 Wikidata 加载书籍数据…</p>
+</div>
+
+<div id="panel">
+  <button id="panel-close">✕</button>
+  <div id="panel-content">
+    <div id="panel-cover-wrap"></div>
+    <div id="panel-title"></div>
+    <div id="panel-author"></div>
+    <div id="panel-location-tag"></div>
+    <div id="panel-desc"></div>
+    <a id="panel-link" target="_blank" href="#">在 Wikidata 查看 →</a>
+  </div>
+</div>
+
+<div id="cluster-panel">
+  <h3 id="cluster-title"></h3>
+  <div id="cluster-list"></div>
+</div>
+
+<div id="stats"></div>
+
+<div id="hover-card">
+  <div id="hc-img-wrap"></div>
+  <div class="hc-title" id="hc-title"></div>
+  <div class="hc-author" id="hc-author"></div>
+</div>
+
+<script>
+// ────────────────────────────────────────────────
+// 地图初始化
+// ────────────────────────────────────────────────
+let allBooks = [];
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: {
+    version: 8,
+    sources: {
+      'carto-tiles': {
+        type: 'raster',
+        tiles: [
+          'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+          'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+          'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+        ],
+        tileSize: 256,
+        attribution: '© OpenStreetMap contributors © CARTO'
+      }
+    },
+    layers: [{
+      id: 'carto',
+      type: 'raster',
+      source: 'carto-tiles',
+      paint: {
+        'raster-opacity': 1
+      }
+    }]
+  },
+  center: [20, 30],
+  zoom: 2,
+  minZoom: 1,
+  maxZoom: 16
+});
+
+map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+
+// ────────────────────────────────────────────────
+// 渲染点位
+// ────────────────────────────────────────────────
+function buildGeoJSON(books) {
+  return {
+    type: 'FeatureCollection',
+    features: books.map(b => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: b.coord },
+      properties: {
+        id: b.id,
+        title: b.title,
+        author: b.author,
+        location: b.location,
+        cover: b.cover,
+        wikiUrl: b.url,
+        source: b.source
+      }
+    }))
+  };
+}
+
+function addLayers(geojson) {
+  map.addSource('books', {
+    type: 'geojson',
+    data: geojson,
+    cluster: true,
+    clusterMaxZoom: 14,   // 放大到14级才停止聚合
+    clusterRadius: 60
+  });
+
+  // 聚合圆（外环发光）
+  map.addLayer({
+    id: 'cluster-glow',
+    type: 'circle',
+    source: 'books',
+    filter: ['has', 'point_count'],
+    paint: {
+      'circle-color': 'rgba(240,194,127,0.12)',
+      'circle-radius': [
+        'step', ['get', 'point_count'],
+        22, 10, 32, 100, 44, 500, 56
+      ],
+      'circle-blur': 0.6
+    }
+  });
+
+  map.addLayer({
+    id: 'clusters',
+    type: 'circle',
+    source: 'books',
+    filter: ['has', 'point_count'],
+    paint: {
+      'circle-color': [
+        'step', ['get', 'point_count'],
+        '#8a6f3a',   // 1–9 本：深褐
+        10, '#b8892e', // 10–99 本：中金
+        100, '#d4a843', // 100–499 本：亮金
+        500, '#f0c27f'  // 500+ 本：最亮
+      ],
+      'circle-radius': [
+        'step', ['get', 'point_count'],
+        16, 10, 24, 100, 34, 500, 46
+      ],
+      'circle-opacity': 0.92,
+      'circle-stroke-width': 1.5,
+      'circle-stroke-color': 'rgba(240,194,127,0.5)'
+    }
+  });
+
+  // 聚合数字（更大更清晰）
+  map.addLayer({
+    id: 'cluster-count',
+    type: 'symbol',
+    source: 'books',
+    filter: ['has', 'point_count'],
+    layout: {
+      'text-field': '{point_count_abbreviated}',
+      'text-size': ['step', ['get', 'point_count'], 11, 100, 13, 500, 15],
+      'text-font': ['Open Sans Bold']
+    },
+    paint: {
+      'text-color': '#1a1a2e',
+      'text-halo-color': 'rgba(240,194,127,0.3)',
+      'text-halo-width': 1
+    }
+  });
+
+  // 单本书点（小而精致）
+  map.addLayer({
+    id: 'single-books',
+    type: 'circle',
+    source: 'books',
+    filter: ['!', ['has', 'point_count']],
+    paint: {
+      'circle-color': '#f0c27f',
+      'circle-radius': 5,
+      'circle-opacity': 0.9,
+      'circle-stroke-width': 1.5,
+      'circle-stroke-color': 'rgba(26,26,46,0.8)'
+    }
+  });
+}
+
+// ────────────────────────────────────────────────
+// 交互
+// ────────────────────────────────────────────────
+const panel = document.getElementById('panel');
+const clusterPanel = document.getElementById('cluster-panel');
+
+// Wikimedia Commons 缩略图 URL
+// 原始 URL 形如 https://commons.wikimedia.org/wiki/Special:FilePath/Foo.jpg
+// 缩略图 API：https://commons.wikimedia.org/w/thumb.php?f=Foo.jpg&w=200
+function wikimediaThumb(rawUrl, width) {
+  try {
+    // 提取文件名部分（去掉路径前缀和查询参数）
+    const decoded = decodeURIComponent(rawUrl);
+    const fileName = decoded.split('/').pop().split('?')[0];
+    return `https://commons.wikimedia.org/w/thumb.php?f=${encodeURIComponent(fileName)}&w=${width}`;
+  } catch {
+    return rawUrl;
+  }
+}
+
+function openBookPanel(props) {
+  clusterPanel.style.display = 'none';
+
+  // MapLibre 会把 null 序列化成字符串 "null"，统一清洗
+  const title    = (!props.title   || props.title   === 'null') ? '未知书名' : props.title;
+  const author   = (!props.author  || props.author  === 'null') ? ''         : props.author;
+  const location = (!props.location|| props.location=== 'null') ? ''         : props.location;
+  const cover    = (!props.cover   || props.cover   === 'null') ? null       : props.cover;
+  const wikiUrl  = (!props.wikiUrl || props.wikiUrl === 'null') ? (props.id || '') : props.wikiUrl;
+
+  // 书名如果是 Q 号，显示"未知书名"并提供链接查看原始数据
+  const displayTitle = /^Q\d+$/.test(title) ? '（书名暂无翻译）' : title;
+
+  document.getElementById('panel-title').textContent = displayTitle;
+  document.getElementById('panel-author').textContent = author ? `作者：${author}` : '';
+  document.getElementById('panel-location-tag').textContent = location ? `📍 ${location}` : '';
+
+  const coverWrap = document.getElementById('panel-cover-wrap');
+  coverWrap.innerHTML = '';
+
+  if (cover) {
+    // Open Library 封面是直接 jpg；Wikimedia 需要走 thumb API
+    const isOL = cover.includes('covers.openlibrary.org');
+    const thumbUrl = isOL ? cover : wikimediaThumb(cover, 200);
+    const img = document.createElement('img');
+    img.className = 'book-cover';
+    img.alt = displayTitle;
+    coverWrap.appendChild(img);
+    img.onerror = () => {
+      img.remove();
+      coverWrap.innerHTML = '<div class="book-cover-placeholder">📖</div>';
+    };
+    img.src = thumbUrl;
+  } else {
+    coverWrap.innerHTML = '<div class="book-cover-placeholder">📖</div>';
+  }
+
+  document.getElementById('panel-desc').textContent = '';
+  const link = document.getElementById('panel-link');
+  link.href = wikiUrl;
+  link.style.display = wikiUrl ? 'inline-block' : 'none';
+  link.textContent = wikiUrl?.includes('openlibrary') ? '在 Open Library 查看 →' : '在 Wikidata 查看 →';
+
+  panel.classList.add('open');
+  // Open Library 的书不走 Wikidata 摘要
+  const isOLBook = (props.source === 'openlibrary') || (props.id || '').includes('openlibrary');
+  if (!isOLBook) fetchWikiSummary(props.id);
+}
+
+async function fetchWikiSummary(wikidataUrl) {
+  try {
+    const qid = wikidataUrl.split('/').pop();
+    const res = await fetch(
+      `https://www.wikidata.org/wiki/Special:EntityData/${qid}.json`
+    );
+    const data = await res.json();
+    const entity = data.entities[qid];
+    const desc = entity?.descriptions?.zh?.value
+      || entity?.descriptions?.en?.value
+      || '';
+    document.getElementById('panel-desc').textContent = desc;
+  } catch {}
+}
+
+map.on('click', 'clusters', async (e) => {
+  const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
+  if (!features.length) return;
+
+  const clusterId = features[0].properties.cluster_id;
+  const count = features[0].properties.point_count;
+  const coords = features[0].geometry.coordinates;
+
+  if (count <= 50) {
+    // 少量：弹出列表
+    const source = map.getSource('books');
+    source.getClusterLeaves(clusterId, 50, 0, (err, leaves) => {
+      if (err) return;
+      showClusterList(leaves, count, coords);
+    });
+  } else {
+    // 大量：放大地图展开
+    map.easeTo({ center: coords, zoom: map.getZoom() + 3 });
+  }
+});
+
+function showClusterList(leaves, totalCount, coords) {
+  panel.classList.remove('open');
+  const list = document.getElementById('cluster-list');
+  list.innerHTML = '';
+  document.getElementById('cluster-title').textContent =
+    `此地有 ${totalCount} 本书`;
+
+  for (const leaf of leaves) {
+    const p = leaf.properties;
+    const t = (!p.title || p.title === 'null' || /^Q\d+$/.test(p.title)) ? '（书名暂无翻译）' : p.title;
+    const a = (!p.author || p.author === 'null') ? '' : p.author;
+    const cover = (!p.cover || p.cover === 'null') ? null : p.cover;
+
+    const btn = document.createElement('button');
+    btn.className = 'cluster-book-btn';
+
+    // 有封面时显示小缩略图
+    if (cover) {
+      const thumb = document.createElement('img');
+      thumb.src = cover.includes('covers.openlibrary.org') ? cover : wikimediaThumb(cover, 60);
+      thumb.onerror = () => thumb.remove();
+      btn.appendChild(thumb);
+    }
+
+    const label = document.createElement('span');
+    label.textContent = t;
+    btn.appendChild(label);
+    if (a) {
+      const sub = document.createElement('small');
+      sub.textContent = a;
+      btn.appendChild(sub);
+    }
+
+    btn.title = t + (a ? ` — ${a}` : '');
+    btn.onclick = () => {
+      clusterPanel.style.display = 'none';
+      openBookPanel(p);
+      map.easeTo({ center: leaf.geometry.coordinates, zoom: 14 });
+    };
+    list.appendChild(btn);
+  }
+
+  clusterPanel.style.display = 'block';
+}
+
+map.on('click', 'single-books', (e) => {
+  const props = e.features[0].properties;
+  openBookPanel(props);
+  map.easeTo({ center: e.features[0].geometry.coordinates, zoom: Math.max(map.getZoom(), 8) });
+});
+
+// ────────────────────────────────────────────────
+// Hover 封面卡片
+// ────────────────────────────────────────────────
+const hoverCard  = document.getElementById('hover-card');
+const hcImgWrap  = document.getElementById('hc-img-wrap');
+const hcTitle    = document.getElementById('hc-title');
+const hcAuthor   = document.getElementById('hc-author');
+
+let hoverLoadingCover = null; // 防止旧图片请求覆盖新卡片
+
+function showHoverCard(props, mouseX, mouseY) {
+  const title  = (!props.title  || props.title  === 'null' || /^Q\d+$/.test(props.title))  ? '书名暂无翻译' : props.title;
+  const author = (!props.author || props.author === 'null') ? '' : props.author;
+  const cover  = (!props.cover  || props.cover  === 'null') ? null : props.cover;
+
+  hcTitle.textContent  = title;
+  hcAuthor.textContent = author;
+  hcImgWrap.innerHTML  = '';
+
+  const token = {}; // 唯一标识本次加载
+  hoverLoadingCover = token;
+
+  if (cover) {
+    const isOL = cover.includes('covers.openlibrary.org');
+    const thumbUrl = isOL ? cover : wikimediaThumb(cover, 240);
+    const img = document.createElement('img');
+    hcImgWrap.appendChild(img);
+    img.onerror = () => {
+      if (hoverLoadingCover !== token) return;
+      hcImgWrap.innerHTML = '<div class="hc-placeholder">📖</div>';
+    };
+    img.src = thumbUrl;
+  } else {
+    hcImgWrap.innerHTML = '<div class="hc-placeholder">📖</div>';
+  }
+
+  positionHoverCard(mouseX, mouseY);
+  hoverCard.style.display = 'flex';
+}
+
+function positionHoverCard(mx, my) {
+  const W = hoverCard.offsetWidth  || 140;
+  const H = hoverCard.offsetHeight || 230;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const offset = 16;
+
+  let x = mx + offset;
+  let y = my - H / 2;
+
+  if (x + W > vw - 8) x = mx - W - offset;
+  if (y < 8) y = 8;
+  if (y + H > vh - 8) y = vh - H - 8;
+
+  hoverCard.style.left = x + 'px';
+  hoverCard.style.top  = y + 'px';
+}
+
+function hideHoverCard() {
+  hoverLoadingCover = null;
+  hoverCard.style.display = 'none';
+}
+
+map.on('mousemove', 'single-books', (e) => {
+  map.getCanvas().style.cursor = 'pointer';
+  const props = e.features[0].properties;
+  showHoverCard(props, e.originalEvent.clientX, e.originalEvent.clientY);
+});
+
+map.on('mousemove', (e) => {
+  // 鼠标在 single-books 上时已处理，其余位置更新卡片位置或隐藏
+  const features = map.queryRenderedFeatures(e.point, { layers: ['single-books'] });
+  if (!features.length) {
+    hideHoverCard();
+    // 检查是否在 cluster 上
+    const cf = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
+    map.getCanvas().style.cursor = cf.length ? 'pointer' : '';
+  } else {
+    positionHoverCard(e.originalEvent.clientX, e.originalEvent.clientY);
+  }
+});
+
+map.on('mouseleave', 'single-books', () => {
+  map.getCanvas().style.cursor = '';
+  hideHoverCard();
+});
+
+map.on('mouseenter', 'clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
+map.on('mouseleave', 'clusters', () => { map.getCanvas().style.cursor = ''; });
+
+document.getElementById('panel-close').onclick = () => panel.classList.remove('open');
+map.on('click', (e) => {
+  if (!e.originalEvent.target.closest('#panel') &&
+      !e.originalEvent.target.closest('#cluster-panel')) {
+    const f = map.queryRenderedFeatures(e.point, { layers: ['clusters', 'single-books'] });
+    if (!f.length) {
+      panel.classList.remove('open');
+      clusterPanel.style.display = 'none';
+    }
+  }
+});
+
+// ────────────────────────────────────────────────
+// 搜索
+// ────────────────────────────────────────────────
+let searchTimeout;
+document.getElementById('search-input').addEventListener('input', (e) => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    const q = e.target.value.trim().toLowerCase();
+    if (!q) {
+      updateMapData(allBooks);
+      return;
+    }
+    const filtered = allBooks.filter(b =>
+      b.title.toLowerCase().includes(q) ||
+      b.author.toLowerCase().includes(q)
+    );
+    updateMapData(filtered);
+    document.getElementById('stats').textContent =
+      `找到 ${filtered.length} 本匹配的书`;
+  }, 300);
+});
+
+function updateMapData(books) {
+  const source = map.getSource('books');
+  if (source) {
+    source.setData(buildGeoJSON(books));
+    document.getElementById('stats').textContent =
+      `共 ${books.length} 本书 · 数据来源：Wikidata`;
+  }
+}
+
+// ────────────────────────────────────────────────
+// (Open Library 数据由 fetch_data.py 预先抓取，已合并进 data/books.json)
+// ────────────────────────────────────────────────
+
+// ────────────────────────────────────────────────
+// 启动：直接读本地静态 JSON
+// ────────────────────────────────────────────────
+map.on('load', async () => {
+  try {
+    const res = await fetch('data/books.json');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    allBooks = json.books || [];
+  } catch (e) {
+    document.querySelector('#loading p').textContent =
+      '⚠️ 找不到 data/books.json，请先运行 fetch_data.py';
+    console.error(e);
+    return;
+  }
+
+  document.getElementById('loading').style.display = 'none';
+  addLayers(buildGeoJSON(allBooks));
+
+  const wdCount = allBooks.filter(b => b.source === 'wikidata').length;
+  const olCount = allBooks.filter(b => b.source === 'openlibrary').length;
+  document.getElementById('stats').textContent =
+    `共 ${allBooks.length} 本书（Wikidata ${wdCount} · Open Library ${olCount}）`;
+});
+</script>
+</body>
+</html>
