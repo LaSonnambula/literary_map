@@ -520,6 +520,23 @@
       text-overflow: ellipsis;
     }
 
+    /* ── 点击涟漪动画 ── */
+    .map-ripple {
+      position: absolute;
+      border-radius: 50%;
+      pointer-events: none;
+      width: 12px; height: 12px;
+      background: rgba(192, 57, 43, 0.45);
+      transform: translate(-50%, -50%) scale(1);
+      animation: ripple-burst 0.55s cubic-bezier(0.2, 0, 0.6, 1) forwards;
+      z-index: 5;
+    }
+
+    @keyframes ripple-burst {
+      0%   { transform: translate(-50%,-50%) scale(1);   opacity: 0.8; }
+      100% { transform: translate(-50%,-50%) scale(5.5); opacity: 0; }
+    }
+
     /* ── MapLibre 覆盖 ── */
     .maplibregl-ctrl-group {
       background: rgba(252,248,240,0.95) !important;
@@ -701,8 +718,9 @@ function addLayers(geojson) {
     type: 'geojson',
     data: geojson,
     cluster: true,
-    clusterMaxZoom: 9,   // zoom 9+ 就显示单点，不再需要放到最大
-    clusterRadius: 40
+    clusterMaxZoom: 9,
+    clusterRadius: 40,
+    generateId: true     // 为每个 feature 生成唯一 id，feature-state 必需
   });
 
   // 聚合光晕
@@ -719,6 +737,7 @@ function addLayers(geojson) {
   });
 
   // 聚合主圆：从青绿→橙红→深红，在 Voyager 底图上鲜明可辨
+  // hover 时半径 +4，stroke 加粗
   map.addLayer({
     id: 'clusters',
     type: 'circle',
@@ -729,10 +748,21 @@ function addLayers(geojson) {
         'step', ['get','point_count'],
         '#5b9bd5', 10, '#f0a500', 100, '#e05c2a', 500, '#c0392b'
       ],
-      'circle-radius': ['step', ['get','point_count'], 17,10,26,100,36,500,48],
+      'circle-radius': [
+        '+',
+        ['step', ['get','point_count'], 17,10,26,100,36,500,48],
+        ['case', ['boolean', ['feature-state','hover'], false], 4, 0]
+      ],
       'circle-opacity': 0.82,
-      'circle-stroke-width': 2,
-      'circle-stroke-color': 'rgba(255,255,255,0.7)'
+      'circle-stroke-width': [
+        'case', ['boolean', ['feature-state','hover'], false], 3, 2
+      ],
+      'circle-stroke-color': [
+        'case', ['boolean', ['feature-state','hover'], false],
+        'rgba(255,255,255,1)', 'rgba(255,255,255,0.7)'
+      ],
+      'circle-translate': [0, 0],
+      'circle-translate-anchor': 'viewport'
     }
   });
 
@@ -754,18 +784,62 @@ function addLayers(geojson) {
     }
   });
 
+  // 单点光晕：hover 时出现
+  map.addLayer({
+    id: 'single-books-halo',
+    type: 'circle',
+    source: 'books',
+    filter: ['!', ['has', 'point_count']],
+    paint: {
+      'circle-color': 'rgba(192,57,43,0)',
+      'circle-radius': [
+        '+',
+        ['interpolate',['linear'],['zoom'], 2,5, 8,9, 14,14],
+        ['case', ['boolean', ['feature-state','hover'], false], 0, -99]
+      ],
+      'circle-opacity': 0.28,
+      'circle-blur': 0.6,
+      'circle-stroke-width': 0,
+      // 只有 hover 时才显示（通过 radius 控制：非 hover 半径极小为负从而不可见）
+      'circle-color': ['case', ['boolean', ['feature-state','hover'], false], 'rgba(192,57,43,0.5)', 'rgba(0,0,0,0)'],
+    }
+  });
+
   // 单点：深红色小圆点，白描边，在彩色地图上清晰显眼
+  // hover 时放大 + stroke 高亮；active（点击）时更大
   map.addLayer({
     id: 'single-books',
     type: 'circle',
     source: 'books',
     filter: ['!', ['has', 'point_count']],
     paint: {
-      'circle-color': '#c0392b',
-      'circle-radius': ['interpolate',['linear'],['zoom'], 2,3, 8,5.5, 14,8],
-      'circle-opacity': 0.88,
-      'circle-stroke-width': 1.5,
-      'circle-stroke-color': 'rgba(255,255,255,0.8)'
+      'circle-color': [
+        'case',
+        ['boolean', ['feature-state','active'], false], '#e84040',
+        ['boolean', ['feature-state','hover'],  false], '#e04030',
+        '#c0392b'
+      ],
+      'circle-radius': [
+        '+',
+        ['interpolate',['linear'],['zoom'], 2,3, 8,5.5, 14,8],
+        ['case', ['boolean', ['feature-state','active'], false], 3,
+         ['case', ['boolean', ['feature-state','hover'],  false], 2, 0]]
+      ],
+      'circle-opacity': [
+        'case', ['boolean', ['feature-state','hover'], false], 1, 0.88
+      ],
+      'circle-stroke-width': [
+        'case',
+        ['boolean', ['feature-state','active'], false], 2.5,
+        ['boolean', ['feature-state','hover'],  false], 2,
+        1.5
+      ],
+      'circle-stroke-color': [
+        'case',
+        ['boolean', ['feature-state','active'], false], 'rgba(255,255,255,1)',
+        ['boolean', ['feature-state','hover'],  false], 'rgba(255,255,255,0.95)',
+        'rgba(255,255,255,0.8)'
+      ]
     }
   });
 }
@@ -995,11 +1069,62 @@ async function fetchWikidataDesc(wikidataUrl) {
 }
 
 // ────────────────────────────────────────────────
+// Feature-state 追踪（hover / active）
+// ────────────────────────────────────────────────
+let hoveredId = null;      // 当前 hover 的 feature id
+let activeId  = null;      // 当前 active（点击选中）的 feature id
+let activeSource = null;   // 对应 source 层
+
+function clearHover() {
+  if (hoveredId !== null) {
+    map.setFeatureState({ source: 'books', id: hoveredId }, { hover: false });
+    hoveredId = null;
+  }
+}
+
+function setHover(id) {
+  if (hoveredId === id) return;
+  clearHover();
+  hoveredId = id;
+  map.setFeatureState({ source: 'books', id }, { hover: true });
+}
+
+function clearActive() {
+  if (activeId !== null) {
+    map.setFeatureState({ source: 'books', id: activeId }, { active: false });
+    activeId = null;
+    activeSource = null;
+  }
+}
+
+function setActive(id) {
+  clearActive();
+  activeId = id;
+  map.setFeatureState({ source: 'books', id }, { active: true });
+  // 150ms 后解除 active 状态（只做短暂弹跳效果）
+  setTimeout(() => {
+    if (activeId === id) clearActive();
+  }, 600);
+}
+
+// 点击涟漪特效（DOM overlay）
+function spawnRipple(clientX, clientY) {
+  const el = document.createElement('div');
+  el.className = 'map-ripple';
+  el.style.left = clientX + 'px';
+  el.style.top  = clientY + 'px';
+  document.body.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
+// ────────────────────────────────────────────────
 // 交互事件
 // ────────────────────────────────────────────────
 map.on('click', 'clusters', async (e) => {
   const feat = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
   if (!feat.length) return;
+  spawnRipple(e.originalEvent.clientX, e.originalEvent.clientY);
+
   const clusterId = feat[0].properties.cluster_id;
   const count = feat[0].properties.point_count;
   const coords = feat[0].geometry.coordinates;
@@ -1053,9 +1178,12 @@ function showClusterList(leaves, totalCount) {
 }
 
 map.on('click', 'single-books', (e) => {
-  const props = e.features[0].properties;
+  const feat = e.features[0];
+  const props = feat.properties;
+  spawnRipple(e.originalEvent.clientX, e.originalEvent.clientY);
+  if (feat.id !== undefined) setActive(feat.id);
   openBookPanel(props);
-  map.easeTo({ center: e.features[0].geometry.coordinates, zoom: Math.max(map.getZoom(), 8) });
+  map.easeTo({ center: feat.geometry.coordinates, zoom: Math.max(map.getZoom(), 8) });
 });
 
 // ── 悬浮卡片 ──
@@ -1110,12 +1238,15 @@ function hideHoverCard() {
 
 map.on('mousemove', 'single-books', (e) => {
   map.getCanvas().style.cursor = 'pointer';
-  showHoverCard(e.features[0].properties, e.originalEvent.clientX, e.originalEvent.clientY);
+  const feat = e.features[0];
+  if (feat.id !== undefined) setHover(feat.id);
+  showHoverCard(feat.properties, e.originalEvent.clientX, e.originalEvent.clientY);
 });
 
 map.on('mousemove', (e) => {
   const books = map.queryRenderedFeatures(e.point, { layers: ['single-books'] });
   if (!books.length) {
+    clearHover();
     hideHoverCard();
     const cl = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
     map.getCanvas().style.cursor = cl.length ? 'pointer' : '';
@@ -1124,9 +1255,27 @@ map.on('mousemove', (e) => {
   }
 });
 
-map.on('mouseleave', 'single-books', () => { map.getCanvas().style.cursor = ''; hideHoverCard(); });
-map.on('mouseenter', 'clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
-map.on('mouseleave', 'clusters', () => { map.getCanvas().style.cursor = ''; });
+map.on('mouseleave', 'single-books', () => {
+  map.getCanvas().style.cursor = '';
+  clearHover();
+  hideHoverCard();
+});
+
+map.on('mouseenter', 'clusters', (e) => {
+  map.getCanvas().style.cursor = 'pointer';
+  const feat = e.features[0];
+  if (feat.id !== undefined) setHover(feat.id);
+});
+
+map.on('mousemove', 'clusters', (e) => {
+  const feat = e.features[0];
+  if (feat.id !== undefined) setHover(feat.id);
+});
+
+map.on('mouseleave', 'clusters', () => {
+  map.getCanvas().style.cursor = '';
+  clearHover();
+});
 
 document.getElementById('panel-close').onclick = () => panel.classList.remove('open');
 
