@@ -568,6 +568,7 @@
 <body>
 
 <div id="map"></div>
+<canvas id="label-canvas" style="position:absolute;top:0;left:0;pointer-events:none;z-index:4;"></canvas>
 
 <div id="header">
   <div id="header-brand">
@@ -626,7 +627,6 @@ const map = new maplibregl.Map({
   container: 'map',
   style: {
     version: 8,
-    glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
     sources: {
       'carto': {
         type: 'raster',
@@ -770,23 +770,8 @@ function addLayers(geojson) {
     }
   });
 
-  // 聚合数字
-  map.addLayer({
-    id: 'cluster-count',
-    type: 'symbol',
-    source: 'books',
-    filter: ['has', 'point_count'],
-    layout: {
-      'text-field': ['to-string', ['get', 'point_count']],
-      'text-size': ['step', ['get','point_count'], 12, 100, 14, 500, 16],
-      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold']
-    },
-    paint: {
-      'text-color': '#ffffff',
-      'text-halo-color': 'rgba(0,0,0,0.3)',
-      'text-halo-width': 1.5
-    }
-  });
+  // 聚合数字：用 canvas overlay 绘制，避免 glyphs 依赖
+  // 见下方 drawClusterLabels()
 
   // 单点光晕：始终存在，通过 filter 控制只有 hovered 点才显示
   map.addLayer({
@@ -1282,6 +1267,59 @@ map.on('mouseleave', 'clusters', () => {
 
 document.getElementById('panel-close').onclick = () => panel.classList.remove('open');
 
+// ── 聚合数字 canvas overlay ──
+const labelCanvas = document.getElementById('label-canvas');
+const labelCtx    = labelCanvas.getContext('2d');
+
+function resizeLabelCanvas() {
+  const rect = map.getCanvas().getBoundingClientRect();
+  labelCanvas.width  = rect.width  * devicePixelRatio;
+  labelCanvas.height = rect.height * devicePixelRatio;
+  labelCanvas.style.width  = rect.width  + 'px';
+  labelCanvas.style.height = rect.height + 'px';
+}
+
+function drawClusterLabels() {
+  const dpr = devicePixelRatio;
+  labelCtx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
+  if (!map.getSource('books')) return;
+
+  const clusters = map.queryRenderedFeatures({ layers: ['clusters'] });
+  if (!clusters.length) return;
+
+  for (const feat of clusters) {
+    const count  = feat.properties.point_count;
+    const coords = feat.geometry.coordinates;
+    const pt     = map.project(coords);
+    const x = pt.x * dpr;
+    const y = pt.y * dpr;
+
+    const fontSize = count >= 500 ? 16 : count >= 100 ? 14 : 12;
+    labelCtx.font         = `bold ${fontSize * dpr}px -apple-system, "Helvetica Neue", Arial, sans-serif`;
+    labelCtx.textAlign    = 'center';
+    labelCtx.textBaseline = 'middle';
+
+    // 文字阴影（描边）
+    labelCtx.lineWidth    = 3 * dpr;
+    labelCtx.strokeStyle  = 'rgba(0,0,0,0.25)';
+    labelCtx.strokeText(String(count), x, y);
+
+    // 文字主体
+    labelCtx.fillStyle = '#ffffff';
+    labelCtx.fillText(String(count), x, y);
+  }
+}
+
+window.addEventListener('resize', () => {
+  resizeLabelCanvas();
+  drawClusterLabels();
+});
+
+map.on('render', () => {
+  if (!map.loaded()) return;
+  drawClusterLabels();
+});
+
 map.on('click', (e) => {
   if (!e.originalEvent.target.closest('#panel') &&
       !e.originalEvent.target.closest('#cluster-panel')) {
@@ -1335,6 +1373,7 @@ map.on('load', async () => {
   }
 
   document.getElementById('loading').style.display = 'none';
+  resizeLabelCanvas();
   addLayers(buildGeoJSON(allBooks));
 
   const wdC = allBooks.filter(b => b.source === 'wikidata').length;
