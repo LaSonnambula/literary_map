@@ -753,6 +753,22 @@ function addLayers(geojson) {
     }
   });
 
+  // 聚合高亮层：hover 时显示白色边框+放大效果
+  map.addLayer({
+    id: 'clusters-highlight',
+    type: 'circle',
+    source: 'books',
+    filter: ['==', ['get', 'cluster_id'], -1],  // 初始不匹配
+    paint: {
+      'circle-color': 'rgba(255,255,255,0.18)',
+      'circle-radius': ['step', ['get','point_count'], 22,10,31,100,42,500,54],
+      'circle-stroke-width': 3,
+      'circle-stroke-color': 'rgba(255,255,255,0.95)',
+      'circle-opacity': 1,
+      'circle-blur': 0
+    }
+  });
+
   // 聚合数字
   map.addLayer({
     id: 'cluster-count',
@@ -1043,8 +1059,8 @@ async function fetchWikidataDesc(wikidataUrl) {
 // ────────────────────────────────────────────────
 // Hover / Active 管理（用 filter 实现，不依赖 feature-state）
 // ────────────────────────────────────────────────
-let currentHoverId = null;   // 当前 hover 的 book id（properties.id）
-let activeTimerId  = null;
+let currentHoverId    = null;  // 当前 hover 的 book id（单点 properties.id）
+let currentClusterId  = null;  // 当前 hover 的 cluster_id
 
 function setHoveredBook(bookId) {
   if (currentHoverId === bookId) return;
@@ -1064,6 +1080,21 @@ function clearHoveredBook() {
   if (map.getLayer('single-books-highlight')) map.setFilter('single-books-highlight', none);
 }
 
+function setHoveredCluster(clusterId) {
+  if (currentClusterId === clusterId) return;
+  currentClusterId = clusterId;
+  const f = clusterId !== null
+    ? ['all', ['has','point_count'], ['==', ['get','cluster_id'], clusterId]]
+    : ['==', ['get','cluster_id'], -1];
+  if (map.getLayer('clusters-highlight')) map.setFilter('clusters-highlight', f);
+}
+
+function clearHoveredCluster() {
+  if (currentClusterId === null) return;
+  currentClusterId = null;
+  if (map.getLayer('clusters-highlight')) map.setFilter('clusters-highlight', ['==', ['get','cluster_id'], -1]);
+}
+
 // 点击涟漪特效（DOM overlay）
 function spawnRipple(clientX, clientY) {
   const el = document.createElement('div');
@@ -1077,23 +1108,37 @@ function spawnRipple(clientX, clientY) {
 // ────────────────────────────────────────────────
 // 交互事件
 // ────────────────────────────────────────────────
-map.on('click', 'clusters', async (e) => {
+map.on('click', 'clusters', (e) => {
   const feat = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
   if (!feat.length) return;
   spawnRipple(e.originalEvent.clientX, e.originalEvent.clientY);
 
   const clusterId = feat[0].properties.cluster_id;
-  const count = feat[0].properties.point_count;
-  const coords = feat[0].geometry.coordinates;
+  const count     = feat[0].properties.point_count;
+  const coords    = feat[0].geometry.coordinates;
 
-  if (count <= 50) {
-    map.getSource('books').getClusterLeaves(clusterId, 50, 0, (err, leaves) => {
-      if (err) return;
-      showClusterList(leaves, count);
+  // 先 flyTo 展开，展开后若数量少再弹书单
+  map.getSource('books').getClusterExpansionZoom(clusterId, (err, zoom) => {
+    if (err) return;
+    // 如果展开后仍是聚合（count > 50），直接飞过去
+    // 如果 count ≤ 50，飞过去的同时弹出书单
+    map.flyTo({
+      center: coords,
+      zoom: Math.max(zoom, map.getZoom() + 1),
+      speed: 0.9,
+      curve: 1.2
     });
-  } else {
-    map.easeTo({ center: coords, zoom: map.getZoom() + 2 });
-  }
+
+    if (count <= 50) {
+      // flyTo 结束后显示书单
+      map.once('moveend', () => {
+        map.getSource('books').getClusterLeaves(clusterId, 50, 0, (err2, leaves) => {
+          if (err2) return;
+          showClusterList(leaves, count);
+        });
+      });
+    }
+  });
 });
 
 function showClusterList(leaves, totalCount) {
@@ -1218,8 +1263,21 @@ map.on('mouseleave', 'single-books', () => {
   hideHoverCard();
 });
 
-map.on('mouseenter', 'clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
-map.on('mouseleave', 'clusters', () => { map.getCanvas().style.cursor = ''; });
+map.on('mouseenter', 'clusters', (e) => {
+  map.getCanvas().style.cursor = 'pointer';
+  const feat = e.features[0];
+  if (feat) setHoveredCluster(feat.properties.cluster_id);
+});
+
+map.on('mousemove', 'clusters', (e) => {
+  const feat = e.features[0];
+  if (feat) setHoveredCluster(feat.properties.cluster_id);
+});
+
+map.on('mouseleave', 'clusters', () => {
+  map.getCanvas().style.cursor = '';
+  clearHoveredCluster();
+});
 
 document.getElementById('panel-close').onclick = () => panel.classList.remove('open');
 
