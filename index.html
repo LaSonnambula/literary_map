@@ -626,6 +626,7 @@ const map = new maplibregl.Map({
   container: 'map',
   style: {
     version: 8,
+    glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
     sources: {
       'carto': {
         type: 'raster',
@@ -776,14 +777,14 @@ function addLayers(geojson) {
     source: 'books',
     filter: ['has', 'point_count'],
     layout: {
-      'text-field': '{point_count_abbreviated}',
-      'text-size': ['step', ['get','point_count'], 11,100,13,500,15],
-      'text-font': ['Open Sans Bold']
+      'text-field': ['to-string', ['get', 'point_count']],
+      'text-size': ['step', ['get','point_count'], 12, 100, 14, 500, 16],
+      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold']
     },
     paint: {
       'text-color': '#ffffff',
-      'text-halo-color': 'rgba(0,0,0,0.2)',
-      'text-halo-width': 1
+      'text-halo-color': 'rgba(0,0,0,0.3)',
+      'text-halo-width': 1.5
     }
   });
 
