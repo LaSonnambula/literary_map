@@ -684,12 +684,23 @@ function jitterCoord(coord, index) {
   ];
 }
 
+// 判断坐标是否是国家级粗糙坐标（小数位数 ≤ 1，即精度不足城市级）
+function isCountryLevelCoord(coord) {
+  const [lng, lat] = coord;
+  const lngDec = (lng.toString().split('.')[1] || '').length;
+  const latDec = (lat.toString().split('.')[1] || '').length;
+  return lngDec <= 1 && latDec <= 1;
+}
+
 function buildGeoJSON(books) {
+  // 过滤掉国家级粗糙坐标（整数或一位小数），只保留城市级及以上精度
+  const filtered = books.filter(b => !isCountryLevelCoord(b.coord));
+
   // 统计每个坐标出现次数，为同坐标书编序号
   const coordCount = {};
   return {
     type: 'FeatureCollection',
-    features: books.map(b => {
+    features: filtered.map(b => {
       const key = b.coord[0] + ',' + b.coord[1];
       coordCount[key] = (coordCount[key] || 0) + 1;
       const idx = coordCount[key] - 1;
@@ -1284,7 +1295,11 @@ function drawClusterLabels() {
   labelCtx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
   if (!map.getSource('books')) return;
 
-  const clusters = map.queryRenderedFeatures({ layers: ['clusters'] });
+  const canvas = map.getCanvas();
+  const clusters = map.queryRenderedFeatures(
+    [[0, 0], [canvas.width / dpr, canvas.height / dpr]],
+    { layers: ['clusters'] }
+  );
   if (!clusters.length) return;
 
   for (const feat of clusters) {
