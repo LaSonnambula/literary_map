@@ -520,6 +520,53 @@
       text-overflow: ellipsis;
     }
 
+    /* ── 国家标签按钮 ── */
+    .country-marker {
+      background: rgba(255, 252, 245, 0.92);
+      border: 1.5px solid rgba(60, 40, 10, 0.18);
+      border-radius: 20px;
+      padding: 5px 12px 5px 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+      transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.12s;
+      font-family: 'Inter', system-ui, sans-serif;
+      user-select: none;
+    }
+
+    .country-marker:hover {
+      background: rgba(255, 252, 245, 1);
+      border-color: var(--gold);
+      box-shadow: 0 4px 20px rgba(181,101,13,0.25);
+      transform: translateY(-1px);
+    }
+
+    .country-marker:active {
+      transform: translateY(0) scale(0.97);
+    }
+
+    .country-marker-name {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-hi);
+      letter-spacing: 0.02em;
+    }
+
+    .country-marker-count {
+      font-size: 10px;
+      font-weight: 400;
+      color: var(--text-lo);
+      background: var(--gold-dim);
+      border-radius: 10px;
+      padding: 1px 6px;
+      min-width: 20px;
+      text-align: center;
+    }
+
     /* ── 点击涟漪动画 ── */
     .map-ripple {
       position: absolute;
@@ -692,6 +739,24 @@ function isCountryLevelCoord(coord) {
   return lngDec <= 1 && latDec <= 1;
 }
 
+// 按坐标分组国家级书，返回 [{coord, name, books}]
+function groupCountryBooks(books) {
+  const groups = {};
+  for (const b of books) {
+    if (!isCountryLevelCoord(b.coord)) continue;
+    const key = b.coord[0] + ',' + b.coord[1];
+    if (!groups[key]) groups[key] = { coord: b.coord, books: [] };
+    groups[key].books.push(b);
+  }
+  // 每组取出现最多的 location 名作为显示名
+  return Object.values(groups).map(g => {
+    const nameCount = {};
+    for (const b of g.books) nameCount[b.location] = (nameCount[b.location] || 0) + 1;
+    const name = Object.entries(nameCount).sort((a,b) => b[1]-a[1])[0][0] || '';
+    return { coord: g.coord, name, books: g.books };
+  }).sort((a, b) => b.books.length - a.books.length);
+}
+
 function buildGeoJSON(books) {
   // 过滤掉国家级粗糙坐标（整数或一位小数），只保留城市级及以上精度
   const filtered = books.filter(b => !isCountryLevelCoord(b.coord));
@@ -827,6 +892,76 @@ function addLayers(geojson) {
       'circle-stroke-color': 'rgba(255,255,255,1)'
     }
   });
+}
+
+// ────────────────────────────────────────────────
+// 国家标签 Markers
+// ────────────────────────────────────────────────
+let countryMarkers = [];
+
+function addCountryMarkers(books) {
+  // 清除旧 markers
+  countryMarkers.forEach(m => m.remove());
+  countryMarkers = [];
+
+  const groups = groupCountryBooks(books);
+
+  for (const g of groups) {
+    const el = document.createElement('div');
+    el.className = 'country-marker';
+    el.innerHTML = `
+      <span class="country-marker-name">${g.name}</span>
+      <span class="country-marker-count">${g.books.length}</span>
+    `;
+
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      spawnRipple(e.clientX, e.clientY);
+      showCountryBookList(g.name, g.books);
+    });
+
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat(g.coord)
+      .addTo(map);
+
+    countryMarkers.push(marker);
+  }
+}
+
+function showCountryBookList(name, books) {
+  panel.classList.remove('open');
+  const list = document.getElementById('cluster-list');
+  list.innerHTML = '';
+  document.getElementById('cluster-title').textContent = `${name} · ${books.length} 部作品`;
+
+  for (const b of books) {
+    const t   = displayTitle(b.title);
+    const a   = b.author || '';
+    const cov = b.cover || null;
+
+    const btn = document.createElement('button');
+    btn.className = 'cluster-book-btn';
+
+    if (cov) {
+      const img = document.createElement('img');
+      img.src = cov.includes('covers.openlibrary.org') ? cov : wikimediaThumb(cov, 60);
+      img.onerror = () => img.remove();
+      btn.appendChild(img);
+    }
+
+    const txt = document.createElement('div');
+    txt.className = 'cb-text';
+    txt.innerHTML = `<div class="cb-title">${t}</div>${a ? `<div class="cb-author">${a}</div>` : ''}`;
+    btn.appendChild(txt);
+
+    btn.onclick = () => {
+      clusterPanel.style.display = 'none';
+      openBookPanel(b);
+    };
+    list.appendChild(btn);
+  }
+
+  clusterPanel.style.display = 'block';
 }
 
 // ────────────────────────────────────────────────
@@ -1364,6 +1499,7 @@ function updateMapData(books) {
   const src = map.getSource('books');
   if (src) {
     src.setData(buildGeoJSON(books));
+    addCountryMarkers(books);
     const q = document.getElementById('search-input').value.trim();
     if (!q) {
       const wdC = books.filter(b => b.source === 'wikidata').length;
@@ -1390,6 +1526,7 @@ map.on('load', async () => {
   document.getElementById('loading').style.display = 'none';
   resizeLabelCanvas();
   addLayers(buildGeoJSON(allBooks));
+  addCountryMarkers(allBooks);
 
   const wdC = allBooks.filter(b => b.source === 'wikidata').length;
   const olC = allBooks.filter(b => b.source === 'openlibrary').length;
