@@ -719,8 +719,7 @@ function addLayers(geojson) {
     data: geojson,
     cluster: true,
     clusterMaxZoom: 9,
-    clusterRadius: 40,
-    generateId: true     // 为每个 feature 生成唯一 id，feature-state 必需
+    clusterRadius: 40
   });
 
   // 聚合光晕
@@ -736,8 +735,7 @@ function addLayers(geojson) {
     }
   });
 
-  // 聚合主圆：从青绿→橙红→深红，在 Voyager 底图上鲜明可辨
-  // hover 时半径 +4，stroke 加粗
+  // 聚合主圆：从青绿→橙红→深红
   map.addLayer({
     id: 'clusters',
     type: 'circle',
@@ -748,21 +746,10 @@ function addLayers(geojson) {
         'step', ['get','point_count'],
         '#5b9bd5', 10, '#f0a500', 100, '#e05c2a', 500, '#c0392b'
       ],
-      'circle-radius': [
-        '+',
-        ['step', ['get','point_count'], 17,10,26,100,36,500,48],
-        ['case', ['boolean', ['feature-state','hover'], false], 4, 0]
-      ],
+      'circle-radius': ['step', ['get','point_count'], 17,10,26,100,36,500,48],
       'circle-opacity': 0.82,
-      'circle-stroke-width': [
-        'case', ['boolean', ['feature-state','hover'], false], 3, 2
-      ],
-      'circle-stroke-color': [
-        'case', ['boolean', ['feature-state','hover'], false],
-        'rgba(255,255,255,1)', 'rgba(255,255,255,0.7)'
-      ],
-      'circle-translate': [0, 0],
-      'circle-translate-anchor': 'viewport'
+      'circle-stroke-width': 2,
+      'circle-stroke-color': 'rgba(255,255,255,0.7)'
     }
   });
 
@@ -784,62 +771,47 @@ function addLayers(geojson) {
     }
   });
 
-  // 单点光晕：hover 时出现
+  // 单点光晕：始终存在，通过 filter 控制只有 hovered 点才显示
   map.addLayer({
     id: 'single-books-halo',
     type: 'circle',
     source: 'books',
-    filter: ['!', ['has', 'point_count']],
+    filter: ['==', ['get', 'id'], ''],   // 初始不匹配任何点
     paint: {
-      'circle-color': 'rgba(192,57,43,0)',
-      'circle-radius': [
-        '+',
-        ['interpolate',['linear'],['zoom'], 2,5, 8,9, 14,14],
-        ['case', ['boolean', ['feature-state','hover'], false], 0, -99]
-      ],
-      'circle-opacity': 0.28,
-      'circle-blur': 0.6,
+      'circle-color': 'rgba(192,57,43,0.35)',
+      'circle-radius': ['interpolate',['linear'],['zoom'], 2,10, 8,16, 14,22],
+      'circle-blur': 0.7,
       'circle-stroke-width': 0,
-      // 只有 hover 时才显示（通过 radius 控制：非 hover 半径极小为负从而不可见）
-      'circle-color': ['case', ['boolean', ['feature-state','hover'], false], 'rgba(192,57,43,0.5)', 'rgba(0,0,0,0)'],
     }
   });
 
-  // 单点：深红色小圆点，白描边，在彩色地图上清晰显眼
-  // hover 时放大 + stroke 高亮；active（点击）时更大
+  // 单点：深红色小圆点，白描边
   map.addLayer({
     id: 'single-books',
     type: 'circle',
     source: 'books',
     filter: ['!', ['has', 'point_count']],
     paint: {
-      'circle-color': [
-        'case',
-        ['boolean', ['feature-state','active'], false], '#e84040',
-        ['boolean', ['feature-state','hover'],  false], '#e04030',
-        '#c0392b'
-      ],
-      'circle-radius': [
-        '+',
-        ['interpolate',['linear'],['zoom'], 2,3, 8,5.5, 14,8],
-        ['case', ['boolean', ['feature-state','active'], false], 3,
-         ['case', ['boolean', ['feature-state','hover'],  false], 2, 0]]
-      ],
-      'circle-opacity': [
-        'case', ['boolean', ['feature-state','hover'], false], 1, 0.88
-      ],
-      'circle-stroke-width': [
-        'case',
-        ['boolean', ['feature-state','active'], false], 2.5,
-        ['boolean', ['feature-state','hover'],  false], 2,
-        1.5
-      ],
-      'circle-stroke-color': [
-        'case',
-        ['boolean', ['feature-state','active'], false], 'rgba(255,255,255,1)',
-        ['boolean', ['feature-state','hover'],  false], 'rgba(255,255,255,0.95)',
-        'rgba(255,255,255,0.8)'
-      ]
+      'circle-color': '#c0392b',
+      'circle-radius': ['interpolate',['linear'],['zoom'], 2,3, 8,5.5, 14,8],
+      'circle-opacity': 0.88,
+      'circle-stroke-width': 1.5,
+      'circle-stroke-color': 'rgba(255,255,255,0.8)'
+    }
+  });
+
+  // 单点高亮层：hover/active 时显示，通过 filter 精确匹配
+  map.addLayer({
+    id: 'single-books-highlight',
+    type: 'circle',
+    source: 'books',
+    filter: ['==', ['get', 'id'], ''],   // 初始不匹配
+    paint: {
+      'circle-color': '#e04030',
+      'circle-radius': ['interpolate',['linear'],['zoom'], 2,5, 8,8, 14,11],
+      'circle-opacity': 1,
+      'circle-stroke-width': 2.5,
+      'circle-stroke-color': 'rgba(255,255,255,1)'
     }
   });
 }
@@ -1069,42 +1041,27 @@ async function fetchWikidataDesc(wikidataUrl) {
 }
 
 // ────────────────────────────────────────────────
-// Feature-state 追踪（hover / active）
+// Hover / Active 管理（用 filter 实现，不依赖 feature-state）
 // ────────────────────────────────────────────────
-let hoveredId = null;      // 当前 hover 的 feature id
-let activeId  = null;      // 当前 active（点击选中）的 feature id
-let activeSource = null;   // 对应 source 层
+let currentHoverId = null;   // 当前 hover 的 book id（properties.id）
+let activeTimerId  = null;
 
-function clearHover() {
-  if (hoveredId !== null) {
-    map.setFeatureState({ source: 'books', id: hoveredId }, { hover: false });
-    hoveredId = null;
-  }
+function setHoveredBook(bookId) {
+  if (currentHoverId === bookId) return;
+  currentHoverId = bookId;
+  const f = bookId
+    ? ['all', ['!', ['has','point_count']], ['==', ['get','id'], bookId]]
+    : ['==', ['get','id'], ''];
+  if (map.getLayer('single-books-halo'))      map.setFilter('single-books-halo',      f);
+  if (map.getLayer('single-books-highlight')) map.setFilter('single-books-highlight', f);
 }
 
-function setHover(id) {
-  if (hoveredId === id) return;
-  clearHover();
-  hoveredId = id;
-  map.setFeatureState({ source: 'books', id }, { hover: true });
-}
-
-function clearActive() {
-  if (activeId !== null) {
-    map.setFeatureState({ source: 'books', id: activeId }, { active: false });
-    activeId = null;
-    activeSource = null;
-  }
-}
-
-function setActive(id) {
-  clearActive();
-  activeId = id;
-  map.setFeatureState({ source: 'books', id }, { active: true });
-  // 150ms 后解除 active 状态（只做短暂弹跳效果）
-  setTimeout(() => {
-    if (activeId === id) clearActive();
-  }, 600);
+function clearHoveredBook() {
+  if (currentHoverId === null) return;
+  currentHoverId = null;
+  const none = ['==', ['get','id'], ''];
+  if (map.getLayer('single-books-halo'))      map.setFilter('single-books-halo',      none);
+  if (map.getLayer('single-books-highlight')) map.setFilter('single-books-highlight', none);
 }
 
 // 点击涟漪特效（DOM overlay）
@@ -1181,7 +1138,6 @@ map.on('click', 'single-books', (e) => {
   const feat = e.features[0];
   const props = feat.properties;
   spawnRipple(e.originalEvent.clientX, e.originalEvent.clientY);
-  if (feat.id !== undefined) setActive(feat.id);
   openBookPanel(props);
   map.easeTo({ center: feat.geometry.coordinates, zoom: Math.max(map.getZoom(), 8) });
 });
@@ -1239,14 +1195,15 @@ function hideHoverCard() {
 map.on('mousemove', 'single-books', (e) => {
   map.getCanvas().style.cursor = 'pointer';
   const feat = e.features[0];
-  if (feat.id !== undefined) setHover(feat.id);
+  const bookId = feat.properties.id;
+  setHoveredBook(bookId);
   showHoverCard(feat.properties, e.originalEvent.clientX, e.originalEvent.clientY);
 });
 
 map.on('mousemove', (e) => {
   const books = map.queryRenderedFeatures(e.point, { layers: ['single-books'] });
   if (!books.length) {
-    clearHover();
+    clearHoveredBook();
     hideHoverCard();
     const cl = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
     map.getCanvas().style.cursor = cl.length ? 'pointer' : '';
@@ -1257,25 +1214,12 @@ map.on('mousemove', (e) => {
 
 map.on('mouseleave', 'single-books', () => {
   map.getCanvas().style.cursor = '';
-  clearHover();
+  clearHoveredBook();
   hideHoverCard();
 });
 
-map.on('mouseenter', 'clusters', (e) => {
-  map.getCanvas().style.cursor = 'pointer';
-  const feat = e.features[0];
-  if (feat.id !== undefined) setHover(feat.id);
-});
-
-map.on('mousemove', 'clusters', (e) => {
-  const feat = e.features[0];
-  if (feat.id !== undefined) setHover(feat.id);
-});
-
-map.on('mouseleave', 'clusters', () => {
-  map.getCanvas().style.cursor = '';
-  clearHover();
-});
+map.on('mouseenter', 'clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
+map.on('mouseleave', 'clusters', () => { map.getCanvas().style.cursor = ''; });
 
 document.getElementById('panel-close').onclick = () => panel.classList.remove('open');
 
